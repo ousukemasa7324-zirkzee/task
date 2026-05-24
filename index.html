@@ -3634,18 +3634,19 @@ body.drag-in-progress * {
                 const pushItem = async (tfId, gevBody, gcalId) => {
                     const existing = gEventById[tfId] || (gcalId && gEventByGId[gcalId]);
                     if (existing && existing.status !== 'cancelled') {
-                        await this.apiFetch(`${BASE}/${existing.id}`, 'PUT', gevBody);
-                        map[tfId] = existing.id;
+                        await this.apiFetch(`${BASE}/${existing.id}`, 'PUT', gevBody); map[tfId] = existing.id;
+                    } else if (map[tfId]) {
+                        try { await this.apiFetch(`${BASE}/${map[tfId]}`, 'PUT', gevBody); }
+                        catch { const c = await this.apiFetch(BASE, 'POST', gevBody); if (c) map[tfId] = c.id; }
                     } else {
-                        const created = await this.apiFetch(BASE, 'POST', gevBody);
-                        if (created) map[tfId] = created.id;
+                        const created = await this.apiFetch(BASE, 'POST', gevBody); if (created) map[tfId] = created.id;
                     }
                 };
-                const promises = [];
                 if (syncTasks) {
                     state.tasks.filter(t => {
                         if (!filterCategoryIds || filterCategoryIds.length === 0) return true;
-                        return (t.categories || []).some(c => filterCategoryIds.includes(c));
+                        if (!t.categories || t.categories.length === 0) return true; // no category = always sync
+                        return t.categories.some(c => filterCategoryIds.includes(c));
                     }).forEach(t => {
                         promises.push(pushItem(t.id, this.taskToGEvent(t)));
                         if (t.deadline && t.scheduleDate && t.deadline !== t.scheduleDate) {
@@ -3657,6 +3658,20 @@ body.drag-in-progress * {
                     state.events.forEach(ev => promises.push(pushItem(ev.id, this.eventToGEvent(ev), ev.gcalId)));
                 }
                 await Promise.allSettled(promises);
+                // 4. Delete: Google events for TF items that were deleted
+                const activeTfIds = new Set([
+                    ...state.tasks.map(t => t.id),
+                    ...state.tasks.filter(t => t.deadline && t.scheduleDate && t.deadline !== t.scheduleDate).map(t => t.id + '_dl'),
+                    ...state.events.map(e => e.id),
+                ]);
+                const delPromises = [];
+                for (const [tfId, gId] of Object.entries(map)) {
+                    if (!activeTfIds.has(tfId)) {
+                        delPromises.push(this.apiFetch(`${BASE}/${gId}`, 'DELETE').catch(() => {}));
+                        delete map[tfId];
+                    }
+                }
+                await Promise.allSettled(delPromises);
                 this.saveSyncMap(map);
                 const timeStr = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
                 this.setStatus(`同期済み (${timeStr})`, 'sync-on');
