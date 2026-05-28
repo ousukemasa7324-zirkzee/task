@@ -3642,6 +3642,7 @@ body.drag-in-progress * {
                         const created = await this.apiFetch(BASE, 'POST', gevBody); if (created) map[tfId] = created.id;
                     }
                 };
+                const promises = [];
                 if (syncTasks) {
                     state.tasks.filter(t => {
                         if (!filterCategoryIds || filterCategoryIds.length === 0) return true;
