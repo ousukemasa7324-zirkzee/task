@@ -333,6 +333,7 @@ body {
     padding: 14px;
     min-height: 72px;
     box-shadow: var(--shadow-sm);
+    min-width: 0;
 }
 .highlight-title {
     display: flex; align-items: center; gap: 8px;
@@ -372,6 +373,7 @@ body {
     flex-direction: column;
     transition: border-color var(--transition);
     box-shadow: var(--shadow-sm);
+    min-width: 0;
 }
 .day-column.is-today {
     border-color: var(--accent);
@@ -774,6 +776,9 @@ form, .modal-body { padding: 18px 22px; }
     box-shadow: 0 0 0 3px var(--accent-soft);
 }
 .form-group textarea { resize: vertical; min-height: 56px; }
+.link-row { display: flex; gap: 8px; align-items: center; }
+.link-row input { flex: 1; min-width: 0; }
+.link-row .btn-secondary { text-decoration: none; white-space: nowrap; padding: 9px 16px; }
 .form-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -1775,6 +1780,13 @@ body.drag-in-progress * {
                             </select>
                         </div>
                         <div class="form-group"></div>
+                    </div>
+                    <div class="form-group">
+                        <label>リンク</label>
+                        <div class="link-row">
+                            <input type="text" id="task-link" inputmode="url" placeholder="https://...">
+                            <a id="task-link-open" class="btn-secondary" target="_blank" rel="noopener" style="display:none;">開く</a>
+                        </div>
                     </div>
                 </div>
                 <!-- Event-only fields -->
@@ -3413,6 +3425,7 @@ body.drag-in-progress * {
             priority: data.priority || 'medium',
             alarm: data.alarm || 'none',
             memo: data.memo || '',
+            link: data.link || '',
             categories: data.categories || [],
             completed: false,
             createdAt: new Date().toISOString(),
@@ -3478,6 +3491,12 @@ body.drag-in-progress * {
         saveState(); renderCurrentView();
     }
     // ===== Modal Logic =====
+    function updateLinkOpen() {
+        const url = $('#task-link').value.trim();
+        const btn = $('#task-link-open');
+        if (/^https?:\/\//i.test(url)) { btn.href = url; btn.style.display = ''; }
+        else { btn.removeAttribute('href'); btn.style.display = 'none'; }
+    }
     function resetModal() {
         editingItemId = null;
         currentItemType = 'task';
@@ -3485,6 +3504,7 @@ body.drag-in-progress * {
         addFromCategory = null;
         addFromDate = null;
         $('#task-form').reset();
+        updateLinkOpen();
         $('#task-fields').style.display = '';
         $('#event-fields').style.display = 'none';
         $$('.type-option').forEach(o => o.classList.remove('active'));
@@ -3525,6 +3545,8 @@ body.drag-in-progress * {
         $('#task-priority').value = task.priority;
         $('#task-alarm').value = task.alarm;
         $('#task-memo').value = task.memo || '';
+        $('#task-link').value = task.link || '';
+        updateLinkOpen();
         selectedCategories = [...(task.categories||[])];
         renderSelectedCategories();
         $('#delete-task-btn').style.display = 'block';
@@ -4066,6 +4088,7 @@ body.drag-in-progress * {
         $$('.type-option').forEach(opt => {
             opt.addEventListener('click', () => setItemType(opt.dataset.type));
         });
+        $('#task-link').addEventListener('input', updateLinkOpen);
         // Task form submit
         $('#task-form').addEventListener('submit', e => {
             e.preventDefault();
@@ -4080,6 +4103,7 @@ body.drag-in-progress * {
                     priority: $('#task-priority').value,
                     alarm: $('#task-alarm').value,
                     memo: $('#task-memo').value.trim(),
+                    link: $('#task-link').value.trim(),
                     categories: [...selectedCategories],
                 };
                 // If adding from category and no schedule date, use deadline as schedule date
