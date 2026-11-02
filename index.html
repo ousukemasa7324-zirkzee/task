@@ -1550,7 +1550,7 @@ body.drag-in-progress * {
     height: 14px;
 }
 
-/* ===== Log View (記録: 睡眠 × 判断品質) ===== */
+/* ===== Log View (記録: 睡眠 × その日の評価) ===== */
 .log-wrap { display:flex; flex-direction:column; gap:18px; padding-bottom:48px; }
 .log-card { background:var(--bg-card); border:1px solid var(--bg-tertiary); border-radius:14px; padding:18px 20px; }
 .log-card h3 { font-size:15px; margin:0 0 10px; color:var(--text-primary); }
@@ -3178,9 +3178,11 @@ body.drag-in-progress * {
             ]));
         });
     }
-    // ===== Log View (記録: 睡眠 × 判断品質) =====
+    // ===== Log View (記録: 睡眠 × その日の評価) =====
+    // 評価は quality に数値で保存する (A=5, B=4, C=3, D=2, E=1)。表示だけ A〜E にする
     let logFormDate = null;
     let logFormQuality = null;
+    function logGrade(q) { return q == null ? '—' : 'EDCBA'.charAt(Math.round(q) - 1); }
 
     function logsSorted() {
         return (state.logs || []).slice().sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
@@ -3232,21 +3234,10 @@ body.drag-in-progress * {
         const card = el('div', { className: 'log-card' });
         card.innerHTML = [
             '<h3>📝 ' + (ex ? logEsc(date) + ' の記録を編集' : '今日の記録') + '</h3>',
-            '<p class="log-hint">睡眠は<b>翌日の判断品質と並べて見る</b>ためのもの。判断はその日いちばん重要だった<b>1件だけ</b>を、前提・確信度・想定結果で残す。全件やると続かない。</p>',
             '<div class="log-form-row">',
             '<div class="log-field" style="flex:0 1 170px;"><label>日付</label><input type="date" id="log-date"></div>',
             '<div class="log-field" style="flex:0 1 150px;"><label>睡眠時間 (h)</label><input type="number" id="log-sleep" step="0.5" min="0" max="24" placeholder="6.5"></div>',
-            '<div class="log-field" style="flex:1 1 230px;"><label>その日の判断品質 (1〜5)</label><div class="quality-pick" id="log-quality"></div></div>',
-            '</div>',
-            '<div class="log-form-row">',
-            '<div class="log-field" style="flex:3 1 300px;"><label>前提 — 何を正しいと置いて決めたか</label><input type="text" id="log-premise" placeholder="例: 先方は今期中に予算を取れる"></div>',
-            '<div class="log-field" style="flex:0 1 130px;"><label>確信度 (%)</label><input type="number" id="log-confidence" min="0" max="100" step="5" placeholder="70"></div>',
-            '</div>',
-            '<div class="log-form-row">',
-            '<div class="log-field"><label>想定結果 — こうなるはず</label><input type="text" id="log-expected" placeholder="例: 来週中に見積り依頼が来る"></div>',
-            '</div>',
-            '<div class="log-form-row">',
-            '<div class="log-field"><label>メモ（任意 / 今日いちばん迷ったこと）</label><textarea id="log-note"></textarea></div>',
+            '<div class="log-field" style="flex:1 1 230px;"><label>その日の評価 (A〜E)</label><div class="quality-pick" id="log-quality"></div></div>',
             '</div>',
             '<div class="log-btn-row">',
             '<button type="button" class="log-save-btn" id="log-save">保存</button>',
@@ -3257,19 +3248,15 @@ body.drag-in-progress * {
 
         card.querySelector('#log-date').value = date;
         card.querySelector('#log-sleep').value = ex && ex.sleep != null ? ex.sleep : '';
-        card.querySelector('#log-premise').value = ex && ex.premise ? ex.premise : '';
-        card.querySelector('#log-confidence').value = ex && ex.confidence != null ? ex.confidence : '';
-        card.querySelector('#log-expected').value = ex && ex.expected ? ex.expected : '';
-        card.querySelector('#log-note').value = ex && ex.note ? ex.note : '';
 
         const curQ = logFormQuality != null ? logFormQuality : (ex && ex.quality != null ? ex.quality : null);
         if (logFormQuality == null && curQ != null) logFormQuality = curQ;
         const qWrap = card.querySelector('#log-quality');
-        for (let q = 1; q <= 5; q++) {
-            const b = el('button', { type: 'button', className: 'quality-btn' + (curQ === q ? ' active' : ''), textContent: String(q) });
+        for (let q = 5; q >= 1; q--) {
+            const b = el('button', { type: 'button', className: 'quality-btn' + (curQ === q ? ' active' : ''), textContent: logGrade(q) });
             b.addEventListener('click', () => {
                 logFormQuality = (logFormQuality === q ? null : q);
-                qWrap.querySelectorAll('.quality-btn').forEach((x, i) => x.classList.toggle('active', logFormQuality === i + 1));
+                qWrap.querySelectorAll('.quality-btn').forEach((x, i) => x.classList.toggle('active', logFormQuality === 5 - i));
             });
             qWrap.appendChild(b);
         }
@@ -3285,19 +3272,14 @@ body.drag-in-progress * {
         card.querySelector('#log-save').addEventListener('click', () => {
             const d = card.querySelector('#log-date').value || today();
             const sleepRaw = card.querySelector('#log-sleep').value;
-            const confRaw = card.querySelector('#log-confidence').value;
             const entry = {
                 date: d,
                 sleep: sleepRaw === '' ? null : Number(sleepRaw),
                 quality: logFormQuality,
-                premise: card.querySelector('#log-premise').value.trim(),
-                confidence: confRaw === '' ? null : Number(confRaw),
-                expected: card.querySelector('#log-expected').value.trim(),
-                note: card.querySelector('#log-note').value.trim(),
                 updatedAt: new Date().toISOString()
             };
-            if (entry.sleep == null && entry.quality == null && !entry.premise && !entry.note) {
-                card.querySelector('#log-form-msg').textContent = '何か1つは入力してください';
+            if (entry.sleep == null && entry.quality == null) {
+                card.querySelector('#log-form-msg').textContent = '睡眠時間か評価を入力してください';
                 return;
             }
             upsertLog(entry);
@@ -3318,17 +3300,17 @@ body.drag-in-progress * {
         const lowQ = logAvg(paired.filter(p => p.sleep < 6).map(p => p.quality));
         const highQ = logAvg(paired.filter(p => p.sleep >= 6).map(p => p.quality));
 
-        let html = '<h3>📊 睡眠 × 判断品質</h3>';
+        let html = '<h3>📊 睡眠 × その日の評価</h3>';
         html += '<div class="log-stat-row">';
         html += '<div class="log-stat"><div class="k">記録日数</div><div class="v">' + logs.length + '</div><div class="s">両方あり ' + paired.length + '日</div></div>';
         html += '<div class="log-stat"><div class="k">平均睡眠</div><div class="v">' + logFmt(logAvg(sleeps)) + '<span style="font-size:12px;"> h</span></div></div>';
-        html += '<div class="log-stat"><div class="k">平均判断品質</div><div class="v">' + logFmt(logAvg(quals)) + '<span style="font-size:12px;"> /5</span></div></div>';
+        html += '<div class="log-stat"><div class="k">平均評価</div><div class="v">' + logGrade(logAvg(quals)) + '</div><div class="s">A=5〜E=1で ' + logFmt(logAvg(quals)) + '</div></div>';
         html += '<div class="log-stat"><div class="k">相関 r</div><div class="v">' + (r == null ? '—' : logFmt(r, 2)) + '</div><div class="s">' + (r == null ? '3日以上で算出' : (r > 0.3 ? '睡眠が効いている' : r < -0.3 ? '逆相関' : 'ほぼ無関係')) + '</div></div>';
-        html += '<div class="log-stat"><div class="k">6h未満の日</div><div class="v">' + logFmt(lowQ) + '</div><div class="s">6h以上は ' + logFmt(highQ) + '</div></div>';
+        html += '<div class="log-stat"><div class="k">6h未満の日</div><div class="v">' + logGrade(lowQ) + '</div><div class="s">6h以上は ' + logGrade(highQ) + '</div></div>';
         html += '</div>';
 
         if (lowQ != null && highQ != null && highQ - lowQ >= 0.5) {
-            html += '<div class="log-verdict"><b>睡眠6時間未満の日は、判断品質が平均 ' + logFmt(highQ - lowQ) + ' 点低い。</b><br>この状態の自分が下した判断は、その場で確定させず翌日に持ち越す運用を検討する価値があります。</div>';
+            html += '<div class="log-verdict"><b>睡眠6時間未満の日は、評価が平均 ' + logFmt(highQ - lowQ) + ' 段階低い。</b></div>';
         }
         html += buildScatterSVG(paired);
         card.innerHTML = html;
@@ -3336,7 +3318,7 @@ body.drag-in-progress * {
     }
 
     function buildScatterSVG(pts) {
-        if (pts.length < 2) return '<p class="log-empty">睡眠時間と判断品質が2日分たまるとグラフが出ます。</p>';
+        if (pts.length < 2) return '<p class="log-empty">睡眠時間と評価が2日分たまるとグラフが出ます。</p>';
         const W = 560, H = 240, PL = 46, PR = 18, PT = 16, PB = 46;
         const xs = pts.map(p => p.sleep);
         let xmin = Math.min.apply(null, xs), xmax = Math.max.apply(null, xs);
@@ -3349,7 +3331,7 @@ body.drag-in-progress * {
         for (let q = 1; q <= 5; q++) {
             const y = sy(q);
             out.push('<line x1="' + PL + '" y1="' + y + '" x2="' + (W - PR) + '" y2="' + y + '" stroke="var(--bg-tertiary)" stroke-width="1"/>');
-            out.push('<text x="' + (PL - 10) + '" y="' + (y + 4) + '" text-anchor="end" font-size="11" fill="var(--text-muted)">' + q + '</text>');
+            out.push('<text x="' + (PL - 10) + '" y="' + (y + 4) + '" text-anchor="end" font-size="11" fill="var(--text-muted)">' + logGrade(q) + '</text>');
         }
         for (let i = 0; i <= 5; i++) {
             const v = xmin + (xmax - xmin) * i / 5;
@@ -3357,9 +3339,9 @@ body.drag-in-progress * {
         }
         pts.forEach(p => {
             const low = p.sleep < 6;
-            out.push('<circle cx="' + sx(p.sleep).toFixed(1) + '" cy="' + sy(p.quality).toFixed(1) + '" r="6" fill="' + (low ? 'var(--danger)' : 'var(--accent)') + '" fill-opacity="0.6" stroke="var(--bg-card)" stroke-width="1.5"><title>' + logEsc(p.date) + ' / 睡眠 ' + p.sleep + 'h / 品質 ' + p.quality + '</title></circle>');
+            out.push('<circle cx="' + sx(p.sleep).toFixed(1) + '" cy="' + sy(p.quality).toFixed(1) + '" r="6" fill="' + (low ? 'var(--danger)' : 'var(--accent)') + '" fill-opacity="0.6" stroke="var(--bg-card)" stroke-width="1.5"><title>' + logEsc(p.date) + ' / 睡眠 ' + p.sleep + 'h / 評価 ' + logGrade(p.quality) + '</title></circle>');
         });
-        out.push('<text x="' + (W - PR) + '" y="' + (H - 4) + '" text-anchor="end" font-size="11" fill="var(--text-secondary)">横軸: 睡眠時間 (h) 　縦軸: 判断品質　赤=6h未満</text>');
+        out.push('<text x="' + (W - PR) + '" y="' + (H - 4) + '" text-anchor="end" font-size="11" fill="var(--text-secondary)">横軸: 睡眠時間 (h) 　縦軸: 評価　赤=6h未満</text>');
         return '<div class="log-scroll"><svg class="log-chart" viewBox="0 0 ' + W + ' ' + H + '" style="min-width:420px;">' + out.join('') + '</svg></div>';
     }
 
@@ -3371,16 +3353,13 @@ body.drag-in-progress * {
             return card;
         }
         let html = '<h3>🗂 履歴 (' + logs.length + '日)</h3><div class="log-scroll"><table class="log-table">';
-        html += '<thead><tr><th>日付</th><th>睡眠</th><th>品質</th><th>確信度</th><th>前提</th><th>想定結果</th><th></th></tr></thead><tbody>';
+        html += '<thead><tr><th>日付</th><th>睡眠</th><th>評価</th><th></th></tr></thead><tbody>';
         logs.forEach(l => {
             const low = typeof l.sleep === 'number' && l.sleep < 6;
             html += '<tr>';
             html += '<td class="log-num">' + logEsc(l.date) + '</td>';
             html += '<td class="log-num' + (low ? ' log-low' : '') + '">' + (l.sleep == null ? '—' : l.sleep + 'h') + '</td>';
-            html += '<td class="log-num">' + (l.quality == null ? '—' : l.quality) + '</td>';
-            html += '<td class="log-num">' + (l.confidence == null ? '—' : l.confidence + '%') + '</td>';
-            html += '<td>' + logEsc(l.premise || '') + (l.note ? '<div style="font-size:11px;color:var(--text-muted);margin-top:3px;">' + logEsc(l.note) + '</div>' : '') + '</td>';
-            html += '<td>' + logEsc(l.expected || '') + '</td>';
+            html += '<td class="log-num">' + logGrade(l.quality) + '</td>';
             html += '<td class="log-actions"><button data-edit="' + logEsc(l.date) + '" title="編集">✏️</button><button data-del="' + logEsc(l.date) + '" title="削除">🗑</button></td>';
             html += '</tr>';
         });
@@ -3532,12 +3511,15 @@ body.drag-in-progress * {
         renderSelectedCategories();
     }
     function openAddModal() {
+        const presetDate = addFromDate; // resetModal clears addFromDate
+        const presetCategory = addFromCategory; // resetModal clears addFromCategory
         resetModal();
+        addFromCategory = presetCategory;
         $('#modal-title').textContent = '追加';
         // Pre-fill schedule date if from weekly
-        if (addFromDate) {
-            $('#task-schedule-date').value = addFromDate;
-            $('#event-date').value = addFromDate;
+        if (presetDate) {
+            $('#task-schedule-date').value = presetDate;
+            $('#event-date').value = presetDate;
         } else {
             $('#task-schedule-date').value = today();
             $('#event-date').value = today();
