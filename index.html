@@ -1960,6 +1960,8 @@ body.drag-in-progress * {
                     </div>
                     <button type="button" class="btn-primary" id="notif-enable-btn" style="width:100%;">🔔 通知を許可する</button>
                     <small class="form-hint" style="margin-top:6px;">タップするとiOSの許可ダイアログが表示されます。</small>
+                    <button type="button" class="btn-primary" id="push-enable-btn" style="width:100%;margin-top:12px;">⏰ 定時通知をオンにする</button>
+                    <small class="form-hint" style="margin-top:6px;">毎朝8時に今日のタスク、毎晩23時に記録のお知らせが届きます。</small>
                 </div>
                 <div class="settings-section">
                     <h4>📅 カレンダー連携</h4>
@@ -2552,6 +2554,38 @@ body.drag-in-progress * {
             showToast('通知を許可しました！');
         } else {
             showToast('通知が許可されませんでした');
+        }
+    }
+    // 定時通知 (Web Push)。送信は notion-task-sync の GitHub Actions が行う
+    const VAPID_PUBLIC_KEY = 'BGedHEY3EJLZv_Yz2hwz1Dn7DB3lmYAE2aj84l6KeKQcClRPdfCkRFtY_1vFj1J7GvDh_TAO6qL1WT4qC6sNasE';
+    function vapidKeyBytes(b64url) {
+        const raw = atob(b64url.split('-').join('+').split('_').join('/'));
+        return Uint8Array.from(raw, c => c.charCodeAt(0));
+    }
+    async function enablePushSchedule() {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+            alert('この画面では定時通知を使えません。\niPhoneの場合はホーム画面に追加したアプリから押してください。');
+            return;
+        }
+        if (!Sync.isActive()) {
+            alert('先に同期をオンにしてください。');
+            return;
+        }
+        try {
+            const perm = await Notification.requestPermission();
+            updateNotifStatusUI();
+            if (perm !== 'granted') {
+                showToast('通知が許可されませんでした');
+                return;
+            }
+            const reg = await navigator.serviceWorker.ready;
+            const sub = await reg.pushManager.getSubscription()
+                || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: vapidKeyBytes(VAPID_PUBLIC_KEY) });
+            // 同期の ref.set は文書全体を上書きするので、届け先は別の文書に置く
+            await Sync.db.collection('syncs').doc(Sync.code + '-push').set({ [Sync.deviceId()]: JSON.stringify(sub) }, { merge: true });
+            showToast('定時通知をオンにしました');
+        } catch (err) {
+            alert('定時通知をオンにできませんでした: ' + (err.message || err));
         }
     }
     function getAlarmTime(task) {
@@ -4298,6 +4332,7 @@ body.drag-in-progress * {
         });
         // Notification enable button
         $('#notif-enable-btn') && $('#notif-enable-btn').addEventListener('click', enableNotifications);
+        $('#push-enable-btn') && $('#push-enable-btn').addEventListener('click', enablePushSchedule);
         // ===== Calendar Sync Handlers =====
         // Save client ID on blur/input
         $('#gcal-client-id') && $('#gcal-client-id').addEventListener('blur', () => {
