@@ -721,6 +721,7 @@ body {
     max-height: 90vh;
     max-height: 90dvh;
     overflow-y: auto;
+    overflow-x: hidden;
     box-shadow: var(--shadow-md);
     animation: modalIn 0.2s ease;
 }
@@ -777,6 +778,7 @@ form, .modal-body { padding: 18px 22px; }
 }
 .form-group textarea { resize: vertical; min-height: 56px; }
 .link-row { display: flex; gap: 8px; align-items: center; }
+.link-row + .link-row { margin-top: 8px; }
 .link-row input { flex: 1; min-width: 0; }
 .link-row .btn-secondary { text-decoration: none; white-space: nowrap; padding: 9px 16px; }
 .form-row {
@@ -1098,6 +1100,16 @@ form, .modal-body { padding: 18px 22px; }
 }
 /* Touch devices: always show task actions inline */
 @media (hover: none) and (pointer: coarse) {
+    /* iOS Safari: date/time inputs have an intrinsic min width and overflow their box */
+    .form-row > .form-group { min-width: 0; }
+    .form-group input[type="date"],
+    .form-group input[type="time"] {
+        -webkit-appearance: none;
+        appearance: none;
+        min-width: 0;
+        max-width: 100%;
+        min-height: 46px;
+    }
     .task-actions {
         display: flex !important;
         position: static !important;
@@ -1786,6 +1798,10 @@ body.drag-in-progress * {
                         <div class="link-row">
                             <input type="text" id="task-link" inputmode="url" placeholder="https://...">
                             <a id="task-link-open" class="btn-secondary" target="_blank" rel="noopener" style="display:none;">開く</a>
+                        </div>
+                        <div class="link-row">
+                            <input type="text" id="task-link2" inputmode="url" placeholder="https://...">
+                            <a id="task-link2-open" class="btn-secondary" target="_blank" rel="noopener" style="display:none;">開く</a>
                         </div>
                     </div>
                 </div>
@@ -3426,6 +3442,7 @@ body.drag-in-progress * {
             alarm: data.alarm || 'none',
             memo: data.memo || '',
             link: data.link || '',
+            link2: data.link2 || '',
             categories: data.categories || [],
             completed: false,
             createdAt: new Date().toISOString(),
@@ -3492,10 +3509,12 @@ body.drag-in-progress * {
     }
     // ===== Modal Logic =====
     function updateLinkOpen() {
-        const url = $('#task-link').value.trim();
-        const btn = $('#task-link-open');
-        if (/^https?:\/\//i.test(url)) { btn.href = url; btn.style.display = ''; }
-        else { btn.removeAttribute('href'); btn.style.display = 'none'; }
+        ['#task-link', '#task-link2'].forEach(sel => {
+            const url = $(sel).value.trim();
+            const btn = $(sel + '-open');
+            if (/^https?:\/\//i.test(url)) { btn.href = url; btn.style.display = ''; }
+            else { btn.removeAttribute('href'); btn.style.display = 'none'; }
+        });
     }
     function resetModal() {
         editingItemId = null;
@@ -3546,6 +3565,7 @@ body.drag-in-progress * {
         $('#task-alarm').value = task.alarm;
         $('#task-memo').value = task.memo || '';
         $('#task-link').value = task.link || '';
+        $('#task-link2').value = task.link2 || '';
         updateLinkOpen();
         selectedCategories = [...(task.categories||[])];
         renderSelectedCategories();
@@ -4089,6 +4109,7 @@ body.drag-in-progress * {
             opt.addEventListener('click', () => setItemType(opt.dataset.type));
         });
         $('#task-link').addEventListener('input', updateLinkOpen);
+        $('#task-link2').addEventListener('input', updateLinkOpen);
         // Task form submit
         $('#task-form').addEventListener('submit', e => {
             e.preventDefault();
@@ -4104,6 +4125,7 @@ body.drag-in-progress * {
                     alarm: $('#task-alarm').value,
                     memo: $('#task-memo').value.trim(),
                     link: $('#task-link').value.trim(),
+                    link2: $('#task-link2').value.trim(),
                     categories: [...selectedCategories],
                 };
                 // If adding from category and no schedule date, use deadline as schedule date
