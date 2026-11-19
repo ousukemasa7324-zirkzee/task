@@ -1625,11 +1625,6 @@ body.drag-in-progress * {
                     <span class="nav-icon">📁</span>
                     <span class="nav-label">カテゴリー</span>
                 </li>
-                <li class="nav-item" data-view="overdue">
-                    <span class="nav-icon">⚠️</span>
-                    <span class="nav-label">未達成タスク</span>
-                    <span class="badge" id="overdue-badge" style="display:none;">0</span>
-                </li>
                 <li class="nav-item" data-view="log">
                     <span class="nav-icon">📊</span>
                     <span class="nav-label">記録</span>
@@ -2003,6 +1998,7 @@ body.drag-in-progress * {
                         <button type="button" class="btn-secondary" id="data-import">インポート (JSON)</button>
                         <input type="file" id="data-import-file" accept="application/json" style="display:none;">
                     </div>
+                    <button type="button" class="btn-danger" id="data-clear-completed" style="width:100%;margin-top:10px;">🗑️ 完了済みタスクを一括削除</button>
                 </div>
             </div>
         </div>
@@ -3086,6 +3082,16 @@ body.drag-in-progress * {
         const label = renderCalendarGrid($('#mini-calendar-grid'), miniMonthOffset, miniCalMode);
         $('#mini-cal-month').textContent = label;
     }
+    // 「ストック」を先頭に、残りは元の順番のまま並べる（①カテゴリーページと②サイドバー一覧で共通）
+    function getSortedCategories() {
+        const cats = state.categories.slice();
+        const idx = cats.findIndex(c => c.name === 'ストック');
+        if (idx > 0) {
+            const [stock] = cats.splice(idx, 1);
+            cats.unshift(stock);
+        }
+        return cats;
+    }
     // ===== Render Categories View =====
     function renderCategoriesView() {
         const container = $('#categories-content');
@@ -3097,7 +3103,7 @@ body.drag-in-progress * {
             ]));
             return;
         }
-        state.categories.forEach(cat => {
+        getSortedCategories().forEach(cat => {
             const tasks = getTasksByCategory(cat.id);
             const section = el('div', { className:'category-section' }, [
                 el('div', { className:'category-header' }, [
@@ -3182,14 +3188,16 @@ body.drag-in-progress * {
             });
         }
         const badge = $('#overdue-badge');
-        if (tasks.length > 0) { badge.style.display = 'inline'; badge.textContent = tasks.length; }
-        else { badge.style.display = 'none'; }
+        if (badge) {
+            if (tasks.length > 0) { badge.style.display = 'inline'; badge.textContent = tasks.length; }
+            else { badge.style.display = 'none'; }
+        }
     }
     // ===== Sidebar Categories =====
     function renderSidebarCategories() {
         const list = $('#category-list');
         list.innerHTML = '';
-        state.categories.forEach(cat => {
+        getSortedCategories().forEach(cat => {
             const count = getTasksByCategory(cat.id).filter(t=>!t.completed).length;
             list.appendChild(el('li', {
                 className:'category-nav-item',
@@ -3197,7 +3205,7 @@ body.drag-in-progress * {
                     switchView('categories');
                     setTimeout(() => {
                         const sections = $$('.category-section');
-                        const idx = state.categories.findIndex(c=>c.id===cat.id);
+                        const idx = getSortedCategories().findIndex(c=>c.id===cat.id);
                         if (sections[idx]) sections[idx].scrollIntoView({behavior:'smooth'});
                     }, 50);
                 },
@@ -3468,6 +3476,14 @@ body.drag-in-progress * {
         state.tasks = state.tasks.filter(t=>t.id!==id);
         saveState(); renderCurrentView();
     }
+    function deleteAllCompletedTasks() {
+        const count = state.tasks.filter(t=>t.completed).length;
+        if (count === 0) { showToast('完了済みのタスクはありません'); return; }
+        if (!confirm(`完了済みタスクを${count}件削除します。よろしいですか？`)) return;
+        state.tasks = state.tasks.filter(t=>!t.completed);
+        saveState(); renderCurrentView();
+        showToast(`${count}件削除しました`);
+    }
     function toggleTask(id) {
         const t = state.tasks.find(t=>t.id===id);
         if (t) { t.completed = !t.completed; saveState(); renderCurrentView(); }
@@ -3550,7 +3566,8 @@ body.drag-in-progress * {
         if (presetDate) {
             $('#task-schedule-date').value = presetDate;
             $('#event-date').value = presetDate;
-        } else {
+        } else if (!presetCategory) {
+            // カテゴリービュー（ストック等）からの追加は、今日の予定に入らないよう日付を空のままにする
             $('#task-schedule-date').value = today();
             $('#event-date').value = today();
         }
@@ -3660,6 +3677,14 @@ body.drag-in-progress * {
                 }),
             ]));
         });
+        // 新規追加中に「ストック」を選んだら、自動で入っている今日の日付を外す
+        if (!editingItemId) {
+            const stockCat = state.categories.find(c => c.name === 'ストック');
+            const dateField = $('#task-schedule-date');
+            if (stockCat && dateField && selectedCategories.includes(stockCat.id) && dateField.value === today()) {
+                dateField.value = '';
+            }
+        }
     }
     function showCategorySuggestions(query) {
         const container = $('#category-suggestions');
@@ -4390,6 +4415,7 @@ body.drag-in-progress * {
             URL.revokeObjectURL(url);
         });
         $('#data-import') && $('#data-import').addEventListener('click', () => $('#data-import-file').click());
+        $('#data-clear-completed') && $('#data-clear-completed').addEventListener('click', deleteAllCompletedTasks);
         $('#data-import-file') && $('#data-import-file').addEventListener('change', e => {
             const file = e.target.files[0];
             if (!file) return;
